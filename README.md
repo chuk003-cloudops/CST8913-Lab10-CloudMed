@@ -50,6 +50,8 @@ Peer each region’s workload spokes to its hub. Split application, API, and pri
 
 Use route tables for cross-spoke east–west traffic to pass through the regional firewall. Permit only defined application flows and necessary outbound destinations, and validate return routing and DNS. Use NSGs to restrict same-spoke communication. Production and development have no direct peering or shared credentials. Disable public IPs on workload NICs, with a narrowly scoped exception for the gateway and required hub services. Expose no direct administrative ports publicly.
 
+For the API-to-data path, enable route-table network policies on the private endpoint subnet. On the API subnet, add routes for the SQL and Storage endpoint IPs with the regional Azure Firewall as the next hop. The endpoint-specific routes keep traffic on the inspection path even when Azure injects a private endpoint host route. Before production, verify that the API resolves each private IP, reaches it through the firewall, and generates an expected firewall log entry. Check that the firewall preserves a symmetric return path.
+
 ## 4. Zero Trust controls
 
 | Principle | Specific design example |
@@ -78,26 +80,26 @@ flowchart TB
   PL --> EU
   PROD --> CA
   PROD --> EU
-  DEV -->|"Separate lab network, no production access"| T["Development spokes"]
+  DEV -->|"Separate lab network, no production access"| T["Development spoke VNets"]
   POL["Governance: RBAC, Azure Policy, region rules, tags and budgets"] -.-> MG
   ID["Verify explicitly: Entra ID, MFA, Conditional Access, app authorization"]
   ID --> USERS["Patients and staff → permitted tenant region"]
   USERS --> CW
   USERS --> EW
   subgraph CA["Canada Central — tenant-approved Canada and U.S. workload"]
-    CW["Regional Application Gateway WAF"] --> CAAPP["App spoke / app subnet"]
-    CAAPP --> CAF["Hub: Firewall, Bastion, Private DNS resolver"]
-    CAF --> CAPI["API spoke / private API subnet"]
-    CAPI -->|"Routed through hub firewall"| CPE["Data spoke: Private Endpoints"]
+    CW["Regional Application Gateway WAF"] --> CAAPP["App spoke VNet · app subnet"]
+    CAAPP --> CAF["Hub VNet: Firewall, Bastion, Private DNS resolver"]
+    CAF --> CAPI["API spoke VNet · private API subnet"]
+    CAPI -->|"Endpoint routes via hub firewall"| CPE["Data spoke VNet · private endpoint subnet"]
     CPE --> CD["Canada SQL / Storage: public access off, encrypted"]
     CAF -.-> CL["Regional Log Analytics and Defender monitoring"]
     CD -.-> CL
   end
   subgraph EU["West Europe — EU workload"]
-    EW["Regional Application Gateway WAF"] --> EUAPP["App spoke / app subnet"]
-    EUAPP --> EUF["Hub: Firewall, Bastion, Private DNS resolver"]
-    EUF --> EAPI["API spoke / private API subnet"]
-    EAPI -->|"Routed through hub firewall"| EPE["Data spoke: Private Endpoints"]
+    EW["Regional Application Gateway WAF"] --> EUAPP["App spoke VNet · app subnet"]
+    EUAPP --> EUF["Hub VNet: Firewall, Bastion, Private DNS resolver"]
+    EUF --> EAPI["API spoke VNet · private API subnet"]
+    EAPI -->|"Endpoint routes via hub firewall"| EPE["Data spoke VNet · private endpoint subnet"]
     EPE --> ED["EU SQL / Storage: public access off, encrypted"]
     EUF -.-> EL["Regional Log Analytics and Defender monitoring"]
     ED -.-> EL
@@ -121,6 +123,7 @@ This landing zone separates platform administration from workload access and con
 - [Microsoft: Zero Trust overview](https://learn.microsoft.com/en-us/security/zero-trust/zero-trust-overview)
 - [Azure Architecture Center: Hub-spoke network topology](https://learn.microsoft.com/en-us/azure/architecture/networking/architecture/hub-spoke)
 - [Microsoft: Azure Private Endpoint overview](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview)
+- [Microsoft: Troubleshoot private endpoint connectivity and firewall routing](https://learn.microsoft.com/en-us/troubleshoot/azure/private-link/troubleshoot-private-endpoint-connectivity-failure)
 - [Microsoft: Create and manage Azure budgets](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets)
 - [U.S. HHS: Summary of the HIPAA Security Rule](https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html)
 - [European Union: GDPR text](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng)
